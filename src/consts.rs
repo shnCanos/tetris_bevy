@@ -8,6 +8,7 @@ pub const LIMITS: Vec2 = vec2(5., 25.);
 
 pub const GAME_SPEED: f32 = 1.; // Game speed in seconds
 
+pub const DOWN_KEY_MULTIPLIER: f32 = 3.;
 
 // Blocks should appear as coordinates in this format
 // 

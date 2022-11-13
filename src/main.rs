@@ -1,34 +1,26 @@
 use bevy::{prelude::*, sprite::collide_aabb::collide};
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
+use rand::{self, Rng};
 
 mod consts;
 use consts::*;
 
 // --- Events ---
-struct SpawnSingleBlockEvent {
-    // NOTE! This Vec2's units are blocks and not pixels!
-    translation: Vec2,
-    color: Color,
-}
-
-impl Display for SpawnSingleBlockEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "x: {} | y: {} | color: {:?}", self.translation.x, self.translation.y, self.color)
-    }
-}
-
 struct SpawnBlockEvent;
 struct GameOverEvent;
 
 struct MoveEvent;
-struct ShouldMoveEvent (Vec2); // The position of the parent of the block that should move
 // --- Resources ---
 #[derive(Resource)]
 struct Score (usize);
 
 #[derive(Resource)]
 struct MainGameTimer (Timer);
-
+impl Default for MainGameTimer {
+    fn default() -> Self {
+        Self ( Timer::from_seconds(GAME_SPEED, TimerMode::Repeating) )
+    }
+}
 
 // --- Components ---
 #[derive(Component)]
@@ -42,18 +34,16 @@ fn main() {
         .add_plugins(DefaultPlugins)
         
         .add_startup_system(startup_system)
-        
-        .add_system(spawn_single_block_system)
+
         .add_system(should_move_block_system)
+        .add_system(game_time_system)
+        .add_system(spawn_block_system)
         
-        .add_event::<SpawnSingleBlockEvent>()
         .add_event::<GameOverEvent>()
         .add_event::<MoveEvent>()
-        .add_event::<ShouldMoveEvent>()
         .add_event::<SpawnBlockEvent>()
         
         .insert_resource(Score (0))
-        .insert_resource(MainGameTimer (Timer::from_seconds(GAME_SPEED, TimerMode::Repeating)))
         
         .run();
 }
@@ -65,24 +55,24 @@ fn startup_system(mut commands: Commands) {
 }
 
 // --- Normal Systems ---
-fn spawn_single_block_system(mut commands: Commands, mut event: EventReader<SpawnSingleBlockEvent>) {
-    for block in event.iter() {
-        if DBG_MODE {
-            println!("Spawned block: {block}");
-        }
-        commands.spawn(SpriteBundle {
-            transform: Transform {
-                translation: Vec3::from((block.translation.x * BLOCK_SIZE, block.translation.y * BLOCK_SIZE, 0.)),
-                scale: Vec3::new(BLOCK_SIZE, BLOCK_SIZE, 0.),
-                ..Default::default()
-            },
-            sprite: Sprite {
-                color: block.color,
-                ..Default::default()
-            },
-            ..Default::default()
-        });
+fn spawn_single_block_system(commands: &mut Commands, translation: Vec2, color: Color) -> Entity{
+    if DBG_MODE {
+        println!("Spawned block: {translation}");
     }
+    commands.spawn(SpriteBundle {
+        transform: Transform {
+            translation: Vec3::from((translation.x * BLOCK_SIZE, translation.y * BLOCK_SIZE, 0.)),
+            scale: Vec3::new(BLOCK_SIZE, BLOCK_SIZE, 0.),
+            ..Default::default()
+        },
+        sprite: Sprite {
+            color: color,
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .insert(NormalBlock)
+    .id()
 }
 
 // Tests whether the blocks should move and if they should sends an event:
@@ -91,16 +81,17 @@ fn spawn_single_block_system(mut commands: Commands, mut event: EventReader<Spaw
 // SpawnBlockEvent
 fn should_move_block_system (
     mut move_event: EventReader<MoveEvent>,
-    mut should_move_event: EventWriter<ShouldMoveEvent>,
     mut spawn_block_event: EventWriter<SpawnBlockEvent>,
-    blocks_query: Query<(&Transform, &BlockParent), With<BlockParent>>,
-    all_blocks_query: Query<&Transform, With<NormalBlock>>,
+    mut blocks_query: Query<(&mut Transform, &BlockParent), With<BlockParent>>,
+    all_blocks_query: Query<&Transform, (With<NormalBlock>, Without<BlockParent>)>,
 ) {
     for _ in move_event.iter() {
+        if DBG_MODE {
+            println!("@should_move_block_system: checking whether blocks should move...");
+        }
         let mut block_moved = false;
         
-        for (parent_transform, block_parent) in blocks_query.iter() {
-            
+        for (mut parent_transform, block_parent) in blocks_query.iter_mut() {
             // -- Check whether the block parent should move --
             // Conputes the hitboxes of all the blocks that make
             // Up the block parent and sees if they:
@@ -112,6 +103,10 @@ fn should_move_block_system (
 
             for translation in block_parent.iter() {
                 blocks_translations.push(parent_transform.translation + (translation.extend(0.) * BLOCK_SIZE));
+            }
+
+            if DBG_MODE {
+                println!("translation: {:?}", &blocks_translations);
             }
 
             let mut should_move = true;
@@ -158,16 +153,83 @@ fn should_move_block_system (
 
             if should_move {
                 block_moved = true;
-                should_move_event.send(ShouldMoveEvent (parent_transform.translation.truncate()));
+                parent_transform.translation.y -= BLOCK_SIZE;
+            }
+
+            if DBG_MODE {
+                dbg!(should_move);
             }
         }
 
-        if block_moved {
+        if !block_moved {
             spawn_block_event.send(SpawnBlockEvent);
         }
     }
 }
 
+fn spawn_block_system (
+    mut read_event: EventReader<SpawnBlockEvent>,
+    mut commands: Commands,
+) {
+    for _ in read_event.iter() {
+        // TODO spawn random block here (index random)
+        let index = 0;
+        let blocks = BLOCK_TYPES[index];
+        
+        let red = rand::thread_rng().gen_range(0..100) as f32 / 100.;
+        let blue = rand::thread_rng().gen_range(0..100) as f32 / 100.;
+        let green = rand::thread_rng().gen_range(0..100) as f32 / 100.;
+        let color = Color::rgb(red, green, blue);
+
+        let mut children = Vec::new();
+        for translation in blocks {
+            let id = spawn_single_block_system(&mut commands, translation, color);
+            children.push(id);
+
+        }
+
+        // The parent is invisible
+        let parent = commands.spawn(
+            SpriteBundle {
+                sprite: Sprite { 
+                    color: Color::rgba(0., 0., 0., 0.),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        )
+        .insert(BlockParent (index))
+        .id();
+
+        children.iter().for_each(|child| { commands.entity(parent).add_child(*child); });
+    }
+}
+
+fn game_time_system (
+    mut timer: Local<MainGameTimer>,
+    kb: Res<Input<KeyCode>>,
+    mut event: EventWriter<MoveEvent>,
+    time: Res<Time>,
+) {
+    if timer.0.finished() {
+        event.send(MoveEvent);
+        timer.0.reset();
+        if DBG_MODE {
+            println!("@game_time_system: Refreshed game!");
+        }
+        return;
+    }
+
+    if kb.pressed(KeyCode::Down) {
+        timer.0.tick(
+            Duration::from_millis(
+                ((time.delta_seconds() * DOWN_KEY_MULTIPLIER) * 1000. ) as u64)
+        );
+        return;
+    }
+
+    timer.0.tick(time.delta());
+}
 
 #[cfg(test)]
 mod tests {
