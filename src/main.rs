@@ -198,7 +198,6 @@ fn spawn_block_system (
     mut commands: Commands,
 ) {
     for _ in read_event.iter() {
-        // TODO spawn random block here (index random)
         let index = rand::thread_rng().gen_range(0..BLOCK_TYPES.len());
         let blocks = BLOCK_TYPES[index];
         
