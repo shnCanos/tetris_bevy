@@ -57,7 +57,7 @@ fn startup_system(mut commands: Commands) {
 // --- Normal Systems ---
 fn spawn_single_block_system(commands: &mut Commands, translation: Vec2, color: Color) -> Entity{
     if DBG_MODE {
-        println!("Spawned block: {translation}");
+        println!("=> Spawned block: {translation}");
     }
     commands.spawn(SpriteBundle {
         transform: Transform {
@@ -75,8 +75,7 @@ fn spawn_single_block_system(commands: &mut Commands, translation: Vec2, color: 
     .id()
 }
 
-// Tests whether the blocks should move and if they should sends an event:
-// ShouldMoveEvent (position_of_the_block_parent)
+// Tests whether the blocks should move and if they should moves them.
 // If no blocks move it sends the event
 // SpawnBlockEvent
 fn should_move_block_system (
@@ -87,7 +86,7 @@ fn should_move_block_system (
 ) {
     for _ in move_event.iter() {
         if DBG_MODE {
-            println!("@should_move_block_system: checking whether blocks should move...");
+            println!("@should_move_block_system: checking whether blocks should move...\n");
         }
         let mut block_moved = false;
         
@@ -106,44 +105,52 @@ fn should_move_block_system (
             }
 
             if DBG_MODE {
-                println!("translation: {:?}", &blocks_translations);
+                println!("=> translation: {:?}", &blocks_translations);
             }
 
             let mut should_move = true;
             for translation in blocks_translations.iter() {
                 // Hit the floor
-                if translation.y >= LIMITS.y * BLOCK_SIZE {
+                if translation.y <= -LIMITS.y * BLOCK_SIZE {
                     should_move = false;
                     break;
                 }
                 
                 // Check for collisions
-                let hitbox = Vec2::splat(BLOCK_SIZE + 1.); // The hitbox has to be slightly bigger than the block
+                // let hitbox = Vec2::splat(BLOCK_SIZE + 1.); // The hitbox has to be slightly bigger than the block
 
                 for other_blocks_translation in all_blocks_query.iter() {
                     let other_blocks_translation = other_blocks_translation.translation;
 
                     // Check whether they don't have the same parent
                     if blocks_translations.contains(&other_blocks_translation) {
+                        continue;
+                    }
+
+                    if other_blocks_translation.y == translation.y - BLOCK_SIZE && other_blocks_translation.x == translation.x {
+                        if DBG_MODE {
+                            println!("=> Block at {} {} with {} {} | Collided!", translation.x, translation.y, other_blocks_translation.x, other_blocks_translation.y);
+                        }
+                        should_move = false;
                         break;
                     }
 
-                    match collide(*translation, hitbox, other_blocks_translation, hitbox) {
-                        Some(collision) => {
-                            if DBG_MODE {
-                                println!("Block at {} {} | Collided!: {:?}", translation.x, translation.y, collision);
-                            }
-                            match collision {
-                                bevy::sprite::collide_aabb::Collision::Top |
-                                bevy::sprite::collide_aabb::Collision::Bottom => {
-                                    should_move = false;
-                                    break;
-                                },
-                                _ => ()
-                            };
-                        },
-                        None => (),
-                    }
+                    // match collide(*translation, hitbox, other_blocks_translation, hitbox) {
+                    //     Some(collision) => {
+                    //         if DBG_MODE {
+                    //             println!("=> Block at {} {} with {} {} | Collided!: {:?}", translation.x, translation.y, other_blocks_translation.x, other_blocks_translation.y, collision);
+                    //         }
+                    //         match collision {
+                    //             bevy::sprite::collide_aabb::Collision::Top |
+                    //             bevy::sprite::collide_aabb::Collision::Bottom => {
+                    //                 should_move = false;
+                    //                 break;
+                    //             },
+                    //             _ => ()
+                    //         };
+                    //     },
+                    //     None => (),
+                    // }
                 }
 
                 if !should_move {
@@ -155,13 +162,12 @@ fn should_move_block_system (
                 block_moved = true;
                 parent_transform.translation.y -= BLOCK_SIZE;
             }
-
-            if DBG_MODE {
-                dbg!(should_move);
-            }
         }
 
         if !block_moved {
+            if DBG_MODE {
+                println!("Spawning blocks...");
+            }
             spawn_block_event.send(SpawnBlockEvent);
         }
     }
