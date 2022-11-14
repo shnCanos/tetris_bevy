@@ -17,4 +17,7 @@ pub const DOWN_KEY_MULTIPLIER: f32 = 50.;
 // | -1  |
 
 // Use Vec2::ZERO to fill the coordinates that aren't used
-pub const BLOCK_TYPES: [[Vec2; 4]; 1] = [[Vec2::ZERO, vec2(0., 1.), vec2(0., -1.), vec2(-1., 1.)]];
+pub const BLOCK_TYPES: [[Vec2; 4]; 2] = [
+    [Vec2::ZERO, vec2(0., 1.), vec2(0., -1.), vec2(-1., 1.)], 
+    [Vec2::ZERO, vec2(-1., 0.), vec2(1., 0.), Vec2::ZERO]
+    ];

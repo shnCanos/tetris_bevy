@@ -109,7 +109,7 @@ fn should_move_block_system (
             // Up the block parent and sees if they:
             // - Hit the floor
             // - Hit another block below them
-            // - Hit the roof (And then the game should end)
+            // - Hit another block while on the roof (And then the game should end)
             
             let block_parent = BLOCK_TYPES[block_parent.0];
             let mut blocks_translations = Vec::new();
@@ -199,7 +199,7 @@ fn spawn_block_system (
 ) {
     for _ in read_event.iter() {
         // TODO spawn random block here (index random)
-        let index = 0;
+        let index = rand::thread_rng().gen_range(0..BLOCK_TYPES.len());
         let blocks = BLOCK_TYPES[index];
         
         let red = rand::thread_rng().gen_range(0..100) as f32 / 100.;
