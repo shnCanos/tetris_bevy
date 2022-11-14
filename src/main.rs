@@ -89,7 +89,9 @@ fn should_move_block_system (
             println!("@should_move_block_system: checking whether blocks should move...\n");
         }
         let mut block_moved = false;
-        
+
+
+        let mut block_index = 0;
         for (mut parent_transform, block_parent) in blocks_query.iter_mut() {
             // -- Check whether the block parent should move --
             // Conputes the hitboxes of all the blocks that make
@@ -105,9 +107,10 @@ fn should_move_block_system (
             }
 
             if DBG_MODE {
-                println!("=> translation: {:?}", &blocks_translations);
+                println!("=> translation of block {}: {:?}", block_index, &blocks_translations);
             }
 
+            let mut collision_index = 0;
             let mut should_move = true;
             for translation in blocks_translations.iter() {
                 // Hit the floor
@@ -117,15 +120,15 @@ fn should_move_block_system (
                 }
                 
                 // Check for collisions
-                // let hitbox = Vec2::splat(BLOCK_SIZE + 1.); // The hitbox has to be slightly bigger than the block
-
                 for other_blocks_translation in all_blocks_query.iter() {
                     let other_blocks_translation = other_blocks_translation.translation;
+                    dbg!(&other_blocks_translation);
 
                     // Check whether they don't have the same parent
                     if blocks_translations.contains(&other_blocks_translation) {
                         continue;
                     }
+
 
                     if other_blocks_translation.y == translation.y - BLOCK_SIZE && other_blocks_translation.x == translation.x {
                         if DBG_MODE {
@@ -135,22 +138,7 @@ fn should_move_block_system (
                         break;
                     }
 
-                    // match collide(*translation, hitbox, other_blocks_translation, hitbox) {
-                    //     Some(collision) => {
-                    //         if DBG_MODE {
-                    //             println!("=> Block at {} {} with {} {} | Collided!: {:?}", translation.x, translation.y, other_blocks_translation.x, other_blocks_translation.y, collision);
-                    //         }
-                    //         match collision {
-                    //             bevy::sprite::collide_aabb::Collision::Top |
-                    //             bevy::sprite::collide_aabb::Collision::Bottom => {
-                    //                 should_move = false;
-                    //                 break;
-                    //             },
-                    //             _ => ()
-                    //         };
-                    //     },
-                    //     None => (),
-                    // }
+                    collision_index += 1;
                 }
 
                 if !should_move {
@@ -161,6 +149,10 @@ fn should_move_block_system (
             if should_move {
                 block_moved = true;
                 parent_transform.translation.y -= BLOCK_SIZE;
+            }
+
+            if DBG_MODE {
+                block_index += 1;
             }
         }
 
