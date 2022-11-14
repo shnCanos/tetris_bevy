@@ -78,11 +78,13 @@ fn spawn_single_block_system(commands: &mut Commands, translation: Vec2, color: 
 // Tests whether the blocks should move and if they should moves them.
 // If no blocks move it sends the event
 // SpawnBlockEvent
+// It also tests whether the game should end, case which it will send the message
+// GameOverEvent
 fn should_move_block_system (
     mut move_event: EventReader<MoveEvent>,
     mut spawn_block_event: EventWriter<SpawnBlockEvent>,
     mut blocks_query: Query<(&mut Transform, &BlockParent), With<BlockParent>>,
-    all_blocks_query: Query<&Transform, (With<NormalBlock>, Without<BlockParent>)>,
+    mut game_over_event: EventWriter<GameOverEvent>,
 ) {
     for _ in move_event.iter() {
         if DBG_MODE {
@@ -92,12 +94,22 @@ fn should_move_block_system (
 
 
         let mut block_index = 0;
+
+        // This is a workaround since we have nested query loops
+        // This is ONLY used for the nested loop, not the main one
+        let mut ptvec = Vec::new();
+        let mut bpvec = Vec::new();
+        for (parent_transform, block_parent) in blocks_query.iter() {
+            ptvec.push(parent_transform.translation.clone());
+            bpvec.push(block_parent.0);
+        }
         for (mut parent_transform, block_parent) in blocks_query.iter_mut() {
             // -- Check whether the block parent should move --
             // Conputes the hitboxes of all the blocks that make
             // Up the block parent and sees if they:
             // - Hit the floor
             // - Hit another block below them
+            // - Hit the roof (And then the game should end)
             
             let block_parent = BLOCK_TYPES[block_parent.0];
             let mut blocks_translations = Vec::new();
@@ -110,37 +122,46 @@ fn should_move_block_system (
                 println!("=> translation of block {}: {:?}", block_index, &blocks_translations);
             }
 
-            let mut collision_index = 0;
             let mut should_move = true;
             for translation in blocks_translations.iter() {
                 // Hit the floor
                 if translation.y <= -LIMITS.y * BLOCK_SIZE {
+                    if DBG_MODE {
+                        println!("==> Hit the floor!");
+                    }
                     should_move = false;
                     break;
                 }
                 
                 // Check for collisions
-                for other_blocks_translation in all_blocks_query.iter() {
-                    let other_blocks_translation = other_blocks_translation.translation;
-                    dbg!(&other_blocks_translation);
+                //  NOTE: This is a workaround. What I initially meant to do was use the children's positions
+                //  To calculate the collisions, but that revealed impossible as ***APARENTLY***  bevy calculates
+                //  The children's translations by using the parent's. This means that without getting the parent
+                //  Of the block I will not be able to use the old code, and I figured this was less work and less
+                //  Messy too.
 
-                    // Check whether they don't have the same parent
-                    if blocks_translations.contains(&other_blocks_translation) {
+                for (other_parents_translation, other_parents_block) in  ptvec.iter().zip(&bpvec) {
+                    let other_parents_block = BLOCK_TYPES[*other_parents_block];
+                    
+                    // If it is the same block
+                    if *other_parents_translation == parent_transform.translation {
                         continue;
                     }
 
+                    for other_translation in other_parents_block.iter() {
+                        let other_translation = *other_parents_translation + (other_translation.extend(0.) * BLOCK_SIZE);
 
-                    if other_blocks_translation.y == translation.y - BLOCK_SIZE && other_blocks_translation.x == translation.x {
-                        if DBG_MODE {
-                            println!("=> Block at {} {} with {} {} | Collided!", translation.x, translation.y, other_blocks_translation.x, other_blocks_translation.y);
+                        if other_translation.y == translation.y - BLOCK_SIZE && other_translation.x == translation.x {
+                            if DBG_MODE {
+                                println!("==> Block  {:?} collided with block {:?}", other_translation, translation);
+                            }
+
+                            should_move = false;
+                            break;
                         }
-                        should_move = false;
-                        break;
                     }
 
-                    collision_index += 1;
                 }
-
                 if !should_move {
                     break;
                 }
@@ -151,6 +172,13 @@ fn should_move_block_system (
                 parent_transform.translation.y -= BLOCK_SIZE;
             }
 
+            // Test game over
+            if !should_move && parent_transform.translation.y == 0. {
+                game_over_event.send(GameOverEvent);
+                // PlaceHolder
+                panic!("Game over!");
+            }
+
             if DBG_MODE {
                 block_index += 1;
             }
@@ -158,7 +186,7 @@ fn should_move_block_system (
 
         if !block_moved {
             if DBG_MODE {
-                println!("Spawning blocks...");
+                println!("No blocks moved! Spawning new blocks...");
             }
             spawn_block_event.send(SpawnBlockEvent);
         }
