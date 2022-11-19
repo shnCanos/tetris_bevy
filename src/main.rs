@@ -341,13 +341,13 @@ fn move_sideways_system (
                 // Don't get the children of the parent we are currently checking
                 if parent_entity == child_block.parent {
                     // Check whether it hit the walls
-                    // let translation = child_transform.translation();
-                    // if translation.x >= LIMITS.x * BLOCK_SIZE {
-                    //     can_move_right = false;
-                    // }
-                    // if translation.x <= -LIMITS.x * BLOCK_SIZE {
-                    //     can_move_right = false;
-                    // }
+                    let translation = child_transform.translation();
+                    if translation.x >= LIMITS.x * BLOCK_SIZE {
+                        can_move_right = false;
+                    }
+                    if translation.x <= -LIMITS.x * BLOCK_SIZE {
+                        can_move_left = false;
+                    }
                     continue;
                 }
 
