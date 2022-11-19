@@ -17,10 +17,22 @@ struct MoveSidesEvent;
 struct Score(usize);
 
 #[derive(Resource)]
-struct MainGameTimer(Timer);
+struct MainGameTimer {
+    timer: Timer,
+}
 impl Default for MainGameTimer {
     fn default() -> Self {
-        Self(Timer::from_seconds(GAME_SPEED, TimerMode::Repeating))
+        Self {
+            timer: Timer::from_seconds(GAME_SPEED, TimerMode::Repeating),
+        }
+    }
+}
+
+#[derive(Resource)]
+struct GamePaused (bool);
+impl Default for GamePaused {
+    fn default() -> Self {
+        Self (false)
     }
 }
 
@@ -50,6 +62,7 @@ fn main() {
         .add_event::<SpawnBlockEvent>()
         .add_event::<MoveSidesEvent>()
         .insert_resource(Score(0))
+        .insert_resource(GamePaused::default())
         .run();
 }
 
@@ -277,28 +290,37 @@ fn game_time_system(
     mut event_down: EventWriter<MoveDownEvent>,
     mut event_sides: EventWriter<MoveSidesEvent>,
     time: Res<Time>,
+    mut paused: ResMut<GamePaused>
 ) {
+    // Check if the game is paused
+    if kb.just_pressed(KeyCode::Escape) {
+        paused.0 = !paused.0;
+    }
+    if paused.0 {
+        return;
+    }
+
     // Move downwards
-    if timer_down.0.finished() {
+    if timer_down.timer.finished() {
         event_down.send(MoveDownEvent);
-        timer_down.0.reset();
+        timer_down.timer.reset();
         if DBG_MODE {
             println!("@game_time_system: Refreshed game!");
         }
     } else if kb.pressed(KeyCode::Down) {
-        timer_down.0.tick(Duration::from_millis(
+        timer_down.timer.tick(Duration::from_millis(
             ((time.delta_seconds() * DOWN_KEY_MULTIPLIER) * 1000.) as u64,
         ));
     } else {
-        timer_down.0.tick(time.delta());
+        timer_down.timer.tick(time.delta());
     }
 
     // Move sideways
-    if timer_sides.0.finished() {
+    if timer_sides.timer.finished() {
         event_sides.send(MoveSidesEvent);
-        timer_sides.0.reset();
+        timer_sides.timer.reset();
     } else {
-        timer_sides.0.tick(Duration::from_millis(
+        timer_sides.timer.tick(Duration::from_millis(
             ((time.delta_seconds() * RELATIVE_SIDES_MOVING_SPEED) * 1000.) as u64,
         ));
     }
