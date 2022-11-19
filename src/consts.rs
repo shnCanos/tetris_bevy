@@ -8,7 +8,9 @@ pub const LIMITS: Vec2 = vec2(5., 20.);
 
 pub const GAME_SPEED: f32 = 1.; // Game speed in seconds
 
-pub const DOWN_KEY_MULTIPLIER: f32 = 50.;
+pub const DOWN_KEY_MULTIPLIER: f32 = 25.;
+
+pub const RELATIVE_SIDES_MOVING_SPEED: f32 = 25.; // The time it takes to be able to move to the sides in relation to GAME_SPEED: GAME_SPEED / RELATIVE_SIDES_MOVING _SPEED
 
 // Blocks should appear as coordinates in this format
 // 
