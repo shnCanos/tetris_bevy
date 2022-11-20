@@ -29,10 +29,10 @@ impl Default for MainGameTimer {
 }
 
 #[derive(Resource)]
-struct GamePaused (bool);
+struct GamePaused(bool);
 impl Default for GamePaused {
     fn default() -> Self {
-        Self (false)
+        Self(false)
     }
 }
 
@@ -51,7 +51,16 @@ struct NormalBlock {
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            window: WindowDescriptor {
+                width: (BLOCK_SIZE * LIMITS.x) * 2.,
+                height: (BLOCK_SIZE * LIMITS.y) * 2. + BLOCK_SIZE / 2., // A block spawned in (0,0) will have its center in (0,0), thus we need to add that last part or the blocks will be cut
+                title: "Tetris, YAHOOOOOO".to_string(),
+                resizable: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        }))
         .add_startup_system(startup_system)
         .add_system(should_move_block_system)
         .add_system(game_time_system)
@@ -73,7 +82,12 @@ fn startup_system(mut commands: Commands) {
 }
 
 // --- Normal Systems ---
-fn spawn_single_block_system(commands: &mut Commands, translation: Vec2, color: Color, parent: Entity) -> Entity {
+fn spawn_single_block_system(
+    commands: &mut Commands,
+    translation: Vec2,
+    color: Color,
+    parent: Entity,
+) -> Entity {
     if DBG_MODE {
         println!("=> Spawned block: {translation}");
     }
@@ -290,7 +304,7 @@ fn game_time_system(
     mut event_down: EventWriter<MoveDownEvent>,
     mut event_sides: EventWriter<MoveSidesEvent>,
     time: Res<Time>,
-    mut paused: ResMut<GamePaused>
+    mut paused: ResMut<GamePaused>,
 ) {
     // Check if the game is paused
     if kb.just_pressed(KeyCode::Escape) {
@@ -326,11 +340,11 @@ fn game_time_system(
     }
 }
 
-fn move_sideways_system (
-    mut event: EventReader<MoveSidesEvent>, 
-    kb: Res<Input<KeyCode>>, 
+fn move_sideways_system(
+    mut event: EventReader<MoveSidesEvent>,
+    kb: Res<Input<KeyCode>>,
     mut parents_query: Query<(Entity, &BlockParent, &mut Transform), Without<NormalBlock>>,
-    children_query: Query<(&NormalBlock, &GlobalTransform), Without<BlockParent>>
+    children_query: Query<(&NormalBlock, &GlobalTransform), Without<BlockParent>>,
 ) {
     for _ in event.iter() {
         if !(kb.pressed(KeyCode::Left) || kb.pressed(KeyCode::Right)) {
@@ -340,9 +354,7 @@ fn move_sideways_system (
         let mut can_move_right = true;
         let mut can_move_left = true;
 
-
         for (parent_entity, block_parent, mut parent_transform) in parents_query.iter_mut() {
-            
             // Move only the block that's moving
             if !block_parent.moving {
                 continue;
@@ -373,13 +385,16 @@ fn move_sideways_system (
                     continue;
                 }
 
-
                 let child_translation = child_transform.translation();
                 for translation in blocks_translations.iter() {
-                    if translation.x - BLOCK_SIZE == child_translation.x && translation.y == child_translation.y{
+                    if translation.x - BLOCK_SIZE == child_translation.x
+                        && translation.y == child_translation.y
+                    {
                         can_move_left = false;
                     }
-                    if translation.x + BLOCK_SIZE == child_translation.x && translation.y == child_translation.y{
+                    if translation.x + BLOCK_SIZE == child_translation.x
+                        && translation.y == child_translation.y
+                    {
                         can_move_right = false;
                     }
                 }
