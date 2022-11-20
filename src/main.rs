@@ -1,7 +1,7 @@
-use bevy::{prelude::*, sprite::collide_aabb::collide};
-use itertools::izip;
+use bevy::prelude::*;
+use itertools::{izip, Itertools};
 use rand::{self, Rng};
-use std::{fmt::Display, time::Duration};
+use std::time::Duration;
 
 mod consts;
 use consts::*;
@@ -12,6 +12,7 @@ struct GameOverEvent;
 
 struct MoveDownEvent;
 struct MoveSidesEvent;
+struct RotatePieceEvent;
 // --- Resources ---
 #[derive(Resource)]
 struct Score(usize);
@@ -53,7 +54,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
-                width: (BLOCK_SIZE * LIMITS.x) * 2.,
+                width: (BLOCK_SIZE * LIMITS.x) * 2. - BLOCK_SIZE, 
                 height: (BLOCK_SIZE * LIMITS.y) * 2. + BLOCK_SIZE / 2., // A block spawned in (0,0) will have its center in (0,0), thus we need to add that last part or the blocks will be cut
                 title: "Tetris, YAHOOOOOO".to_string(),
                 resizable: false,
@@ -70,6 +71,8 @@ fn main() {
         .add_event::<MoveDownEvent>()
         .add_event::<SpawnBlockEvent>()
         .add_event::<MoveSidesEvent>()
+        .add_event::<MoveSidesEvent>()
+        .add_event::<RotatePieceEvent>()
         .insert_resource(Score(0))
         .insert_resource(GamePaused::default())
         .run();
@@ -303,6 +306,7 @@ fn game_time_system(
     kb: Res<Input<KeyCode>>,
     mut event_down: EventWriter<MoveDownEvent>,
     mut event_sides: EventWriter<MoveSidesEvent>,
+    mut event_rotate: EventWriter<RotatePieceEvent>,
     time: Res<Time>,
     mut paused: ResMut<GamePaused>,
 ) {
@@ -338,73 +342,60 @@ fn game_time_system(
             ((time.delta_seconds() * RELATIVE_SIDES_MOVING_SPEED) * 1000.) as u64,
         ));
     }
+
+    if kb.just_pressed(KeyCode::Z) {
+        event_rotate.send(RotatePieceEvent);
+    }
 }
 
-fn move_sideways_system(
-    mut event: EventReader<MoveSidesEvent>,
+fn move_sideways_system (
+    mut event: EventReader<MoveSidesEvent>, 
     kb: Res<Input<KeyCode>>,
-    mut parents_query: Query<(Entity, &BlockParent, &mut Transform), Without<NormalBlock>>,
-    children_query: Query<(&NormalBlock, &GlobalTransform), Without<BlockParent>>,
+    mut parents_query: Query<(Entity, &Children, &BlockParent, &mut Transform), Without<NormalBlock>>,
+    children_query: Query<(&NormalBlock, &GlobalTransform), Without<BlockParent>>
 ) {
-    for _ in event.iter() {
-        if !(kb.pressed(KeyCode::Left) || kb.pressed(KeyCode::Right)) {
+    'main_loop: for _ in event.iter() {
+        let move_direction: f32 = (kb.pressed(KeyCode::Right) as i32 - kb.pressed(KeyCode::Left) as i32) as f32;
+
+        if move_direction == 0. {
             return;
         }
-
-        let mut can_move_right = true;
-        let mut can_move_left = true;
-
-        for (parent_entity, block_parent, mut parent_transform) in parents_query.iter_mut() {
+        
+        for (parent_entity, children, block_parent, mut parent_transform) in parents_query.iter_mut() {
             // Move only the block that's moving
             if !block_parent.moving {
                 continue;
             }
+            
+            // For each child block in the block that is moving, get their translation, and collect all of them into a vector
+            // No need to worry about the BLOCK_TYPES nor the despawned_children!
+            let blocks_translations = children
+                .iter()
+                .map(|&e| children_query.get(e).unwrap().1.translation()) // Get the global translation of each child of the parent
+                .collect_vec();
 
-            let block_parent_vec = BLOCK_TYPES[block_parent.index];
-            let mut blocks_translations = Vec::new();
-
-            for translation in block_parent_vec.iter() {
-                if !block_parent.despawned_children.contains(translation) {
-                    blocks_translations
-                        .push(parent_transform.translation + (translation.extend(0.) * BLOCK_SIZE));
-                }
-            }
-
-            // Get the children's positions
+            // Loop through the positions of each of the child blocks in the world
             for (child_block, child_transform) in children_query.iter() {
                 // Don't get the children of the parent we are currently checking
                 if parent_entity == child_block.parent {
                     // Check whether it hit the walls
                     let translation = child_transform.translation();
-                    if translation.x >= LIMITS.x * BLOCK_SIZE {
-                        can_move_right = false;
+                    if translation.x >= (LIMITS.x - move_direction) * BLOCK_SIZE || translation.x <= -(LIMITS.x + move_direction) * BLOCK_SIZE {
+                        break 'main_loop;
                     }
-                    if translation.x <= -LIMITS.x * BLOCK_SIZE {
-                        can_move_left = false;
-                    }
+
                     continue;
                 }
 
                 let child_translation = child_transform.translation();
                 for translation in blocks_translations.iter() {
-                    if translation.x - BLOCK_SIZE == child_translation.x
-                        && translation.y == child_translation.y
-                    {
-                        can_move_left = false;
-                    }
-                    if translation.x + BLOCK_SIZE == child_translation.x
-                        && translation.y == child_translation.y
-                    {
-                        can_move_right = false;
+                    if translation.x + BLOCK_SIZE * move_direction == child_translation.x && translation.y == child_translation.y {
+                        break 'main_loop;
                     }
                 }
             }
-            if can_move_right && kb.pressed(KeyCode::Right) {
-                parent_transform.translation.x += BLOCK_SIZE;
-            }
-            if can_move_left && kb.pressed(KeyCode::Left) {
-                parent_transform.translation.x -= BLOCK_SIZE;
-            }
+            
+            parent_transform.translation.x += BLOCK_SIZE * move_direction;
         }
     }
 }
