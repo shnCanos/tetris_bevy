@@ -54,7 +54,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
-                width: (BLOCK_SIZE * LIMITS.x) * 2. - BLOCK_SIZE, 
+                width: (BLOCK_SIZE * LIMITS.x) * 2. - BLOCK_SIZE, // For unknown reasons, soulsparks' commit added 1 block to the limits. Easy fix
                 height: (BLOCK_SIZE * LIMITS.y) * 2. + BLOCK_SIZE / 2., // A block spawned in (0,0) will have its center in (0,0), thus we need to add that last part or the blocks will be cut
                 title: "Tetris, YAHOOOOOO".to_string(),
                 resizable: false,
