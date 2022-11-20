@@ -19,7 +19,10 @@ pub const RELATIVE_SIDES_MOVING_SPEED: f32 = 25.; // The time it takes to be abl
 // | -1  |
 
 // Use Vec2::ZERO to fill the coordinates that aren't used
-pub const BLOCK_TYPES: [[Vec2; 4]; 2] = [
-    [Vec2::ZERO, vec2(0., 1.), vec2(0., -1.), vec2(-1., 1.)], 
-    [Vec2::ZERO, vec2(-1., 0.), vec2(1., 0.), Vec2::ZERO]
+pub const BLOCK_TYPES: [[Vec2; 5]; 5] = [
+    [Vec2::ZERO, vec2(0., 1.), vec2(0., -1.), vec2(-1., 1.), Vec2::ZERO], 
+    [Vec2::ZERO, vec2(-1., 0.), vec2(1., 0.), Vec2::ZERO, Vec2::ZERO],
+    [Vec2::ZERO, vec2(-1., 0.), vec2(1., 0.), vec2(0., -1.), Vec2::ZERO],
+    [Vec2::ZERO, vec2(-1., 0.), vec2(-1., 1.), vec2(0., -1.), Vec2::ZERO],
+    [Vec2::ZERO, vec2(1., 0.), vec2(1., -1.), vec2(0., -1.), Vec2::ZERO],
     ];
