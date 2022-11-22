@@ -175,6 +175,11 @@ fn should_move_block_system(
             else {
                 block_parent.moving = false;
             }
+
+            if !block_parent.moving && parent_transform.translation == Vec3::ZERO {
+                game_over_event.send (GameOverEvent);
+                panic!("Game over!"); // Placeholder
+            }
         }
 
         if should_spawn {
