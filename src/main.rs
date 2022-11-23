@@ -335,7 +335,7 @@ fn move_sideways_system (
         }
     }
 }
-
+// This code probably has bugs
 fn row_completed_system (
     block_query: Query<(Entity, &GlobalTransform), With<NormalBlock>>,
     mut commands: Commands,
@@ -360,7 +360,7 @@ fn row_completed_system (
 
     for row in rows.iter() {
         // Despawn row
-        if row.len() == LIMITS.y as usize - 1 {
+        if row.len() == LIMITS.x as usize - 1 {
             for (centity, ctransform) in block_query.iter() {
                 if ctransform.translation().y == row[0] // All the elements in row are the same
                 {
