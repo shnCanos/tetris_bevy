@@ -13,6 +13,8 @@ struct GameOverEvent;
 struct MoveDownEvent;
 struct MoveSidesEvent;
 struct RotatePieceEvent;
+
+struct DestroyedRowEvent;
 // --- Resources ---
 #[derive(Resource)]
 struct Score(usize);
@@ -40,8 +42,6 @@ impl Default for GamePaused {
 // --- Components ---
 #[derive(Component)]
 struct BlockParent {
-    index: usize,                  // The Index of BLOCK_TYPES
-    despawned_children: Vec<Vec2>, // The vectors of the children who have been despawned
     moving: bool,
 }
 
@@ -67,12 +67,14 @@ fn main() {
         .add_system(game_time_system)
         .add_system(spawn_block_system)
         .add_system(move_sideways_system)
+        .add_system(row_completed_system)
         .add_event::<GameOverEvent>()
         .add_event::<MoveDownEvent>()
         .add_event::<SpawnBlockEvent>()
         .add_event::<MoveSidesEvent>()
         .add_event::<MoveSidesEvent>()
         .add_event::<RotatePieceEvent>()
+        .add_event::<DestroyedRowEvent>()
         .insert_resource(Score(0))
         .insert_resource(GamePaused::default())
         .run();
@@ -125,23 +127,31 @@ fn should_move_block_system(
     mut spawn_block_event: EventWriter<SpawnBlockEvent>,
     mut parents_query: Query<(Entity, &Children, &mut BlockParent, &mut Transform), Without<NormalBlock>>,
     mut game_over_event: EventWriter<GameOverEvent>,
-    children_query: Query<(&NormalBlock, &GlobalTransform), Without<BlockParent>>
+    children_query: Query<(&NormalBlock, &GlobalTransform), Without<BlockParent>>,
+    mut destroyed_row_event: EventReader<DestroyedRowEvent>
 ) {
     for _ in move_event.iter() {
+        // When a row is destroyed, the block moving isn't moved
+        let mut ignore_moving = false;
+        for _ in destroyed_row_event.iter() {
+            ignore_moving = true;
+        }
 
         // If a block moves this variable wil be false
         let mut should_spawn = true;
 
         for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
-            // We test every piece and not just the one that moves
-            // if !block_parent.moving { continue; }
+            // Has a row been destroyed?
+            if block_parent.moving && ignore_moving { continue; }
             
             // For each child block in the block that is moving, get their translation, and collect all of them into a vector
             // No need to worry about the BLOCK_TYPES nor the despawned_children!
             let blocks_translations = children
                 .iter()
-                .map(|&e| children_query.get(e).unwrap().1.translation()) // Get the global translation of each child of the parent
+                .filter_map(|&e| children_query.get(e).ok())
+                .map(|e| e.1.translation()) // Get the global translation of each child of the parent
                 .collect_vec();
+
 
             let mut should_move = true;
 
@@ -210,8 +220,6 @@ fn spawn_block_system(mut read_event: EventReader<SpawnBlockEvent>, mut commands
                 ..Default::default()
             })
             .insert(BlockParent {
-                index,
-                despawned_children: Vec::new(),
                 moving: true,
             })
             .id();
@@ -298,7 +306,8 @@ fn move_sideways_system (
             // No need to worry about the BLOCK_TYPES nor the despawned_children!
             let blocks_translations = children
                 .iter()
-                .map(|&e| children_query.get(e).unwrap().1.translation()) // Get the global translation of each child of the parent
+                .filter_map(|&e| children_query.get(e).ok())
+                .map(|e| e.1.translation()) // Get the global translation of each child of the parent
                 .collect_vec();
 
             // Loop through the positions of each of the child blocks in the world
@@ -323,6 +332,42 @@ fn move_sideways_system (
             }
             
             parent_transform.translation.x += BLOCK_SIZE * move_direction;
+        }
+    }
+}
+
+fn row_completed_system (
+    block_query: Query<(Entity, &GlobalTransform), With<NormalBlock>>,
+    mut commands: Commands,
+    mut destroyed_event: EventWriter<DestroyedRowEvent>
+) {
+    let mut rows: Vec<Vec<f32>> = Vec::new();
+    for (_, ctransform) in block_query.iter() {
+        let translation_y = ctransform.translation().y;
+        
+        let mut create_new = true;
+        for row in rows.iter_mut() {
+            if row.contains(&translation_y) {
+                row.push(translation_y);
+                create_new = false;
+            }
+        }
+
+        if create_new {
+            rows.push(vec![translation_y]);
+        }   
+    }
+
+    for row in rows.iter() {
+        // Despawn row
+        if row.len() == LIMITS.y as usize - 1 {
+            for (centity, ctransform) in block_query.iter() {
+                if ctransform.translation().y == row[0] // All the elements in row are the same
+                {
+                    commands.entity(centity).despawn();
+                }
+            }
+            destroyed_event.send(DestroyedRowEvent);
         }
     }
 }
