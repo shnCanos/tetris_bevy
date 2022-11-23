@@ -130,29 +130,42 @@ fn should_move_block_system(
     children_query: Query<(&NormalBlock, &GlobalTransform), Without<BlockParent>>,
     mut destroyed_row_event: EventReader<DestroyedRowEvent>
 ) {
+    // -- BOTH OF THESE EVENTS ONLY NEED TO BE SENT ONCE, THUS THE LACK OF A FOR LOOP --
+    
+    // When a row is destroyed, the function is triggered
+    let mut row_destroyed = false;
+    for _ in destroyed_row_event.iter() {
+        row_destroyed = true;
+    }
+
+    let mut got_move_event =  false;
     for _ in move_event.iter() {
-        // When a row is destroyed, the block moving isn't moved
-        let mut ignore_moving = false;
-        for _ in destroyed_row_event.iter() {
-            ignore_moving = true;
-        }
+        got_move_event = true;
+    }
 
-        // If a block moves this variable wil be false
-        let mut should_spawn = true;
+    if !(row_destroyed || got_move_event) {
+        return;
+    }
 
-        for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
-            // Has a row been destroyed?
-            if block_parent.moving && ignore_moving { continue; }
-            
-            // For each child block in the block that is moving, get their translation, and collect all of them into a vector
-            // No need to worry about the BLOCK_TYPES nor the despawned_children!
-            let blocks_translations = children
-                .iter()
-                .filter_map(|&e| children_query.get(e).ok())
-                .map(|e| e.1.translation()) // Get the global translation of each child of the parent
-                .collect_vec();
+    // If a block moves and a row was not destroyed this variable wil be false
+    let mut should_spawn = true;
 
+    for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
+        // Ignore the moving block when a row is destroyed
+        // if block_parent.moving && row_destroyed { continue; }
+        // We don't need to ignore it
+        
+        // For each child block in the block that is moving, get their translation, and collect all of them into a vector
+        // No need to worry about the BLOCK_TYPES nor the despawned_children!
+        let blocks_translations = children
+            .iter()
+            .filter_map(|&e| children_query.get(e).ok())
+            .map(|e| e.1.translation()) // Get the global translation of each child of the parent
+            .collect_vec();
 
+        // Do-While loop
+        // Better explanation below
+        loop {
             let mut should_move = true;
 
             // Loop through the positions of each of the child blocks in the world
@@ -186,15 +199,25 @@ fn should_move_block_system(
                 block_parent.moving = false;
             }
 
-            if !block_parent.moving && parent_transform.translation == Vec3::ZERO {
-                game_over_event.send (GameOverEvent);
-                panic!("Game over!"); // Placeholder
+            // This is meant for the very specific case of 
+            // Getting a row with a piece with nothing
+            // below broken. Without this, this would
+            // Mean that the blocks that were supposed
+            // To teleport would move down once and
+            // then take their time.
+            if !(!should_move && row_destroyed) {
+                break;
             }
         }
 
-        if should_spawn {
-            spawn_block_event.send(SpawnBlockEvent);
+        if !block_parent.moving && parent_transform.translation == Vec3::ZERO {
+            game_over_event.send (GameOverEvent);
+            panic!("Game over!"); // Placeholder
         }
+    }
+
+    if should_spawn {
+        spawn_block_event.send(SpawnBlockEvent);
     }
 }
 
@@ -337,32 +360,49 @@ fn move_sideways_system (
 }
 // This code probably has bugs
 fn row_completed_system (
-    block_query: Query<(Entity, &GlobalTransform), With<NormalBlock>>,
+    block_query: Query<(Entity, &GlobalTransform, &Parent), With<NormalBlock>>,
     mut commands: Commands,
-    mut destroyed_event: EventWriter<DestroyedRowEvent>
+    mut destroyed_event: EventWriter<DestroyedRowEvent>,
+    parent_query: Query<&BlockParent, Without<NormalBlock>>
 ) {
-    let mut rows: Vec<Vec<f32>> = Vec::new();
-    for (_, ctransform) in block_query.iter() {
-        let translation_y = ctransform.translation().y;
+    let mut rows: Vec<Vec<Vec2>> = Vec::new();
+    for (_, ctransform, cparent) in block_query.iter() {
+        if parent_query.get(cparent.get()).unwrap().moving {
+            continue;
+        }
+        let translation = ctransform.translation().truncate();
         
         let mut create_new = true;
         for row in rows.iter_mut() {
-            if row.contains(&translation_y) {
-                row.push(translation_y);
+            // Due to the fact that we use Vec::ZERO in the coordinates we don't use, we need to check
+            // Whether the coordinates are the exact same as another block already in the list, or this
+            // Thing goes absolutely nuts
+            if !row.iter().filter(|x| x.y == translation.y ).collect_vec().is_empty() && !row.contains(&translation) {
+                row.push(translation);
+                create_new = false;
+            }
+
+            if row.contains(&translation) {
                 create_new = false;
             }
         }
 
         if create_new {
-            rows.push(vec![translation_y]);
+            rows.push(vec![translation]);
         }   
     }
 
     for row in rows.iter() {
         // Despawn row
-        if row.len() == LIMITS.x as usize - 1 {
-            for (centity, ctransform) in block_query.iter() {
-                if ctransform.translation().y == row[0] // All the elements in row are the same
+        if row.len() == LIMITS.x as usize * 2 - 1{
+            if DBG_MODE {
+                println!("Despawning row!, rows: {:#?}", rows);
+            }
+            for (centity, ctransform, cparent) in block_query.iter() {
+                if parent_query.get(cparent.get()).unwrap().moving {
+                    continue;
+                }
+                if ctransform.translation().y == row[0].y // All the elements in row are the same
                 {
                     commands.entity(centity).despawn();
                 }
