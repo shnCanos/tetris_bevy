@@ -149,8 +149,7 @@ fn should_move_block_system(
     loop {
         'main_for_loop: for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
             // Ignore the moving block when a row is destroyed
-            // if block_parent.moving && row_destroyed { continue; }
-            // We don't need to ignore it
+            if block_parent.moving && row_destroyed { continue; }
             
             // For each child block in the block that is moving, get their translation, and collect all of them into a vector
             // No need to worry about the BLOCK_TYPES nor the despawned_children!
