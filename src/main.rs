@@ -67,7 +67,7 @@ fn main() {
         .add_system(game_time_system)
         .add_system(spawn_block_system)
         .add_system(move_sideways_system)
-        .add_system(row_completed_system)
+        // .add_system_to_stage(CoreStage::PostUpdate, row_completed_system)
         .add_event::<GameOverEvent>()
         .add_event::<MoveDownEvent>()
         .add_event::<SpawnBlockEvent>()
@@ -127,16 +127,13 @@ fn should_move_block_system(
     mut spawn_block_event: EventWriter<SpawnBlockEvent>,
     mut parents_query: Query<(Entity, &Children, &mut BlockParent, &mut Transform), Without<NormalBlock>>,
     mut game_over_event: EventWriter<GameOverEvent>,
-    children_query: Query<(&NormalBlock, &GlobalTransform), Without<BlockParent>>,
-    mut destroyed_row_event: EventReader<DestroyedRowEvent>
+    children_query: Query<(Entity, &GlobalTransform, &Parent), (Without<BlockParent>, With<NormalBlock>)>,
+    mut commands: Commands,
 ) {
     // -- BOTH OF THESE EVENTS ONLY NEED TO BE SENT ONCE, THUS THE LACK OF A FOR LOOP --
     
     // When a row is destroyed, the function is triggered
-    let mut row_destroyed = false;
-    for _ in destroyed_row_event.iter() {
-        row_destroyed = true;
-    }
+    let row_destroyed = row_completed_function(&children_query, &mut commands, &parents_query);
 
     let mut got_move_event =  false;
     for _ in move_event.iter() {
@@ -149,74 +146,83 @@ fn should_move_block_system(
 
     // If a block moves and a row was not destroyed this variable wil be false
     let mut should_spawn = true;
+    loop {
+        'main_for_loop: for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
+            // Ignore the moving block when a row is destroyed
+            // if block_parent.moving && row_destroyed { continue; }
+            // We don't need to ignore it
+            
+            // For each child block in the block that is moving, get their translation, and collect all of them into a vector
+            // No need to worry about the BLOCK_TYPES nor the despawned_children!
+            let blocks_translations = children
+                .iter()
+                .filter_map(|&e| children_query.get(e).ok())
+                .map(|e| e.1.translation()) // Get the global translation of each child of the parent
+                .collect_vec();
+            
+            if blocks_translations.is_empty() {
+                commands.entity(parent_entity).despawn();
+                continue;
+            }
 
-    for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
-        // Ignore the moving block when a row is destroyed
-        // if block_parent.moving && row_destroyed { continue; }
-        // We don't need to ignore it
-        
-        // For each child block in the block that is moving, get their translation, and collect all of them into a vector
-        // No need to worry about the BLOCK_TYPES nor the despawned_children!
-        let blocks_translations = children
-            .iter()
-            .filter_map(|&e| children_query.get(e).ok())
-            .map(|e| e.1.translation()) // Get the global translation of each child of the parent
-            .collect_vec();
+            // Do-While loop
+            // Better explanation below
 
-        // Do-While loop
-        // Better explanation below
-        loop {
-            let mut should_move = true;
+            // The children of the parent we are currently checking
+            for translation in blocks_translations.iter() {
+                // Check whether it hit the floor
+                if translation.y - BLOCK_SIZE <= -LIMITS.y * BLOCK_SIZE {
+                    dbg!(1);
+                    block_parent.moving = false;
+                    continue 'main_for_loop; // We check more than one block
+                }
+            }
 
             // Loop through the positions of each of the child blocks in the world
-            for (child_block, child_transform) in children_query.iter() {
-                // The children of the parent we are currently checking
-                if parent_entity == child_block.parent {
-                    // Check whether it hit the floor
-                    let translation = child_transform.translation();
-                    if translation.y - BLOCK_SIZE <= -LIMITS.y * BLOCK_SIZE {
-                        should_move = false;
-                        break; // We check more than one block
+            // And check for collisions
+
+            for translation in blocks_translations.iter() {
+                for (_, child_transform, child_parent) in children_query.iter() {
+                    if parent_entity == child_parent.get() {
+                        continue;
                     }
 
-                    continue;
-                }
+                    let child_translation = child_transform.translation();
 
-                let child_translation = child_transform.translation();
-                for translation in blocks_translations.iter() {
-                    if translation.y - BLOCK_SIZE  == child_translation.y && translation.x == child_translation.x {
-                        should_move = false;
-                        break;
+                    if translation.y - child_translation.y == BLOCK_SIZE && translation.x == child_translation.x {
+                        dbg!(2);
+                        block_parent.moving = false;
+                        continue 'main_for_loop;
                     }
                 }
             }
 
-            if should_move {
-                should_spawn = false;
-                parent_transform.translation.y -= BLOCK_SIZE;
-            }
-            else {
-                block_parent.moving = false;
+            if row_destroyed {
+                println!("{:?}", blocks_translations);
             }
 
-            // This is meant for the very specific case of 
-            // Getting a row with a piece with nothing
-            // below broken. Without this, this would
-            // Mean that the blocks that were supposed
-            // To teleport would move down once and
-            // then take their time.
-            if !(!should_move && row_destroyed) {
-                break;
+            should_spawn = false;
+            parent_transform.translation.y -= BLOCK_SIZE;
+
+            if !block_parent.moving && parent_transform.translation == Vec3::ZERO {
+                game_over_event.send (GameOverEvent);
+                panic!("Game over!"); // Placeholder
             }
         }
 
-        if !block_parent.moving && parent_transform.translation == Vec3::ZERO {
-            game_over_event.send (GameOverEvent);
-            panic!("Game over!"); // Placeholder
+        // This is meant for the specific case of 
+        // Getting a row with a piece with nothing
+        // below broken. Without this, this would
+        // Mean that the blocks that were supposed
+        // To teleport would move down once and
+        // then take their time.
+        if should_spawn || !row_destroyed {
+            break;
         }
     }
 
-    if should_spawn {
+    if should_spawn && !row_destroyed {
+        dbg!(should_spawn, row_destroyed);
         spawn_block_event.send(SpawnBlockEvent);
     }
 }
@@ -359,15 +365,14 @@ fn move_sideways_system (
     }
 }
 // This code probably has bugs
-fn row_completed_system (
-    block_query: Query<(Entity, &GlobalTransform, &Parent), With<NormalBlock>>,
-    mut commands: Commands,
-    mut destroyed_event: EventWriter<DestroyedRowEvent>,
-    parent_query: Query<&BlockParent, Without<NormalBlock>>
-) {
+fn row_completed_function (
+    block_query: &Query<(Entity, &GlobalTransform, &Parent), (Without<BlockParent>, With<NormalBlock>)>,
+    commands: &mut Commands,
+    parent_query: &Query<(Entity, &Children, &mut BlockParent, &mut Transform), Without<NormalBlock>>
+) -> bool {
     let mut rows: Vec<Vec<Vec2>> = Vec::new();
     for (_, ctransform, cparent) in block_query.iter() {
-        if parent_query.get(cparent.get()).unwrap().moving {
+        if parent_query.get(cparent.get()).unwrap().2.moving {
             continue;
         }
         let translation = ctransform.translation().truncate();
@@ -395,11 +400,8 @@ fn row_completed_system (
     for row in rows.iter() {
         // Despawn row
         if row.len() == LIMITS.x as usize * 2 - 1{
-            if DBG_MODE {
-                println!("Despawning row!, rows: {:#?}", rows);
-            }
             for (centity, ctransform, cparent) in block_query.iter() {
-                if parent_query.get(cparent.get()).unwrap().moving {
+                if parent_query.get(cparent.get()).unwrap().2.moving {
                     continue;
                 }
                 if ctransform.translation().y == row[0].y // All the elements in row are the same
@@ -407,7 +409,8 @@ fn row_completed_system (
                     commands.entity(centity).despawn();
                 }
             }
-            destroyed_event.send(DestroyedRowEvent);
+            return true;
         }
     }
+    return false;
 }

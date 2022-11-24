@@ -4,7 +4,7 @@ pub const DBG_MODE: bool = true;
 
 pub const BLOCK_SIZE: f32 = 20.;// The size of a block in pixels
 
-pub const LIMITS: Vec2 = vec2(10., 20.);
+pub const LIMITS: Vec2 = vec2(5., 20.);
 
 pub const GAME_SPEED: f32 = 1.; // Game speed in seconds
 
@@ -19,10 +19,10 @@ pub const RELATIVE_SIDES_MOVING_SPEED: f32 = 25.; // The time it takes to be abl
 // | -1  |
 
 // Use Vec2::ZERO to fill the coordinates that aren't used
-pub const BLOCK_TYPES: [[Vec2; 5]; 2] = [
+pub const BLOCK_TYPES: [[Vec2; 5]; 1] = [
 //    [Vec2::ZERO, vec2(0., 1.), vec2(0., -1.), vec2(-1., 1.), Vec2::ZERO], 
     [Vec2::ZERO, vec2(-1., 0.), vec2(1., 0.), Vec2::ZERO, Vec2::ZERO],
 //    [Vec2::ZERO, vec2(-1., 0.), vec2(1., 0.), vec2(0., -1.), Vec2::ZERO],
 //    [Vec2::ZERO, vec2(-1., 0.), vec2(-1., 1.), vec2(0., -1.), Vec2::ZERO],
-    [Vec2::ZERO, vec2(1., 0.), vec2(1., -1.), vec2(0., -1.), Vec2::ZERO],
+//    [Vec2::ZERO, vec2(1., 0.), vec2(1., -1.), vec2(0., -1.), Vec2::ZERO],
     ];
