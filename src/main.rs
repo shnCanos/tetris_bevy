@@ -134,7 +134,7 @@ fn should_move_block_system(
     mut commands: Commands,
     mut destroyed_row: ResMut<DestroyedRow>,
 ) {
-    // -- BOTH OF THESE EVENTS ONLY NEED TO BE SENT ONCE, THUS THE LACK OF A FOR LOOP --
+    // -- BOTH OF THESE ONLY NEED TO BE SENT ONCE, THUS THE LACK OF A FOR LOOP --
 
     let got_move_event = !move_event.is_empty();
     move_event.clear();
@@ -146,9 +146,17 @@ fn should_move_block_system(
     // If a block moves and a row was not destroyed this variable wil be false
     let mut should_spawn = true;
 
-    // Do-While loop
-    // Better explanation below
+
     'main_for_loop: for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
+        // Check whether the game should end
+        let mut check_game_over = || {
+            if parent_transform.translation == Vec3::ZERO {
+                game_over_event.send (GameOverEvent);
+                panic!("Game over!"); // Placeholder
+            }
+        };
+
+
         // Ignore the moving block when a row is destroyed
         // if block_parent.moving && row_destroyed { continue; }
         
@@ -169,8 +177,8 @@ fn should_move_block_system(
         for translation in blocks_translations.iter() {
             // Check whether it hit the floor
             if translation.y - BLOCK_SIZE <= -LIMITS.y * BLOCK_SIZE {
-                dbg!(1);
                 block_parent.moving = false;
+                check_game_over();
                 continue 'main_for_loop; // We check more than one block
             }
         }
@@ -187,24 +195,16 @@ fn should_move_block_system(
                 let child_translation = child_transform.translation();
 
                 if translation.y - child_translation.y == BLOCK_SIZE && translation.x == child_translation.x {
-                    dbg!(2);
                     block_parent.moving = false;
+                    check_game_over();
                     continue 'main_for_loop;
                 }
             }
         }
 
-        if destroyed_row.0 {
-            println!("{:?}", blocks_translations);
-        }
-
+        // If it reaches this line it means that the block should move
         should_spawn = false;
         parent_transform.translation.y -= BLOCK_SIZE;
-
-        if !block_parent.moving && parent_transform.translation == Vec3::ZERO {
-            game_over_event.send (GameOverEvent);
-            panic!("Game over!"); // Placeholder
-        }
     }
 
     // This is meant for the specific case of 
