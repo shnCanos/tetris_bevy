@@ -13,8 +13,6 @@ struct GameOverEvent;
 struct MoveDownEvent;
 struct MoveSidesEvent;
 struct RotatePieceEvent;
-
-struct DestroyedRowEvent;
 // --- Resources ---
 #[derive(Resource)]
 struct Score(usize);
@@ -38,6 +36,9 @@ impl Default for GamePaused {
         Self(false)
     }
 }
+
+#[derive(Resource)]
+struct DestroyedRow (bool);
 
 // --- Components ---
 #[derive(Component)]
@@ -74,9 +75,9 @@ fn main() {
         .add_event::<MoveSidesEvent>()
         .add_event::<MoveSidesEvent>()
         .add_event::<RotatePieceEvent>()
-        .add_event::<DestroyedRowEvent>()
         .insert_resource(Score(0))
         .insert_resource(GamePaused::default())
+        .insert_resource(DestroyedRow (false))
         .run();
 }
 
@@ -117,6 +118,8 @@ fn spawn_single_block_system(
         .id()
 }
 
+////////////////   I DISCOVERED IT FELLAS! IT'S THE SAME QUERY!!! THE QUERY IS NOT UPDATED!   ////////////////
+
 /// Tests whether the blocks should move and if they should moves them.
 /// If no blocks move it sends the event
 /// SpawnBlockEvent
@@ -129,101 +132,100 @@ fn should_move_block_system(
     mut game_over_event: EventWriter<GameOverEvent>,
     children_query: Query<(Entity, &GlobalTransform, &Parent), (Without<BlockParent>, With<NormalBlock>)>,
     mut commands: Commands,
+    mut destroyed_row: ResMut<DestroyedRow>,
 ) {
     // -- BOTH OF THESE EVENTS ONLY NEED TO BE SENT ONCE, THUS THE LACK OF A FOR LOOP --
-    
-    // When a row is destroyed, the function is triggered
-    let row_destroyed = row_completed_function(&children_query, &mut commands, &parents_query);
 
-    let mut got_move_event =  false;
-    for _ in move_event.iter() {
-        got_move_event = true;
-    }
+    let got_move_event = !move_event.is_empty();
+    move_event.clear();
 
-    if !(row_destroyed || got_move_event) {
+    if !(got_move_event || destroyed_row.0) {
         return;
     }
 
     // If a block moves and a row was not destroyed this variable wil be false
     let mut should_spawn = true;
-    loop {
-        'main_for_loop: for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
-            // Ignore the moving block when a row is destroyed
-            if block_parent.moving && row_destroyed { continue; }
-            
-            // For each child block in the block that is moving, get their translation, and collect all of them into a vector
-            // No need to worry about the BLOCK_TYPES nor the despawned_children!
-            let blocks_translations = children
-                .iter()
-                .filter_map(|&e| children_query.get(e).ok())
-                .map(|e| e.1.translation()) // Get the global translation of each child of the parent
-                .collect_vec();
-            
-            if blocks_translations.is_empty() {
-                commands.entity(parent_entity).despawn();
-                continue;
-            }
 
-            // Do-While loop
-            // Better explanation below
+    // Do-While loop
+    // Better explanation below
+    'main_for_loop: for (parent_entity, children, mut block_parent, mut parent_transform) in parents_query.iter_mut() {
+        // Ignore the moving block when a row is destroyed
+        // if block_parent.moving && row_destroyed { continue; }
+        
+        // For each child block in the block that is moving, get their translation, and collect all of them into a vector
+        // No need to worry about the BLOCK_TYPES nor the despawned_children!
+        let blocks_translations = children
+            .iter()
+            .filter_map(|&e| children_query.get(e).ok())
+            .map(|e| e.1.translation()) // Get the global translation of each child of the parent
+            .collect_vec();
+        
+        if blocks_translations.is_empty() {
+            commands.entity(parent_entity).despawn();
+            continue;
+        }
 
-            // The children of the parent we are currently checking
-            for translation in blocks_translations.iter() {
-                // Check whether it hit the floor
-                if translation.y - BLOCK_SIZE <= -LIMITS.y * BLOCK_SIZE {
-                    dbg!(1);
-                    block_parent.moving = false;
-                    continue 'main_for_loop; // We check more than one block
-                }
-            }
-
-            // Loop through the positions of each of the child blocks in the world
-            // And check for collisions
-
-            for translation in blocks_translations.iter() {
-                for (_, child_transform, child_parent) in children_query.iter() {
-                    if parent_entity == child_parent.get() {
-                        continue;
-                    }
-
-                    let child_translation = child_transform.translation();
-
-                    if translation.y - child_translation.y == BLOCK_SIZE && translation.x == child_translation.x {
-                        dbg!(2);
-                        block_parent.moving = false;
-                        continue 'main_for_loop;
-                    }
-                }
-            }
-
-            if row_destroyed {
-                println!("{:?}", blocks_translations);
-            }
-
-            should_spawn = false;
-            parent_transform.translation.y -= BLOCK_SIZE;
-
-            if !block_parent.moving && parent_transform.translation == Vec3::ZERO {
-                game_over_event.send (GameOverEvent);
-                panic!("Game over!"); // Placeholder
+        // The children of the parent we are currently checking
+        for translation in blocks_translations.iter() {
+            // Check whether it hit the floor
+            if translation.y - BLOCK_SIZE <= -LIMITS.y * BLOCK_SIZE {
+                dbg!(1);
+                block_parent.moving = false;
+                continue 'main_for_loop; // We check more than one block
             }
         }
 
-        // This is meant for the specific case of 
-        // Getting a row with a piece with nothing
-        // below broken. Without this, this would
-        // Mean that the blocks that were supposed
-        // To teleport would move down once and
-        // then take their time.
-        if should_spawn || !row_destroyed {
-            break;
+        // Loop through the positions of each of the child blocks in the world
+        // And check for collisions
+
+        for translation in blocks_translations.iter() {
+            for (_, child_transform, child_parent) in children_query.iter() {
+                if parent_entity == child_parent.get() {
+                    continue;
+                }
+
+                let child_translation = child_transform.translation();
+
+                if translation.y - child_translation.y == BLOCK_SIZE && translation.x == child_translation.x {
+                    dbg!(2);
+                    block_parent.moving = false;
+                    continue 'main_for_loop;
+                }
+            }
+        }
+
+        if destroyed_row.0 {
+            println!("{:?}", blocks_translations);
+        }
+
+        should_spawn = false;
+        parent_transform.translation.y -= BLOCK_SIZE;
+
+        if !block_parent.moving && parent_transform.translation == Vec3::ZERO {
+            game_over_event.send (GameOverEvent);
+            panic!("Game over!"); // Placeholder
         }
     }
 
-    if should_spawn && !row_destroyed {
-        dbg!(should_spawn, row_destroyed);
+    // This is meant for the specific case of 
+    // Getting a row with a piece with nothing
+    // below broken. Without this, this would
+    // Mean that the blocks that were supposed
+    // To teleport would move down once and
+    // then take their time.
+    if should_spawn && destroyed_row.0 {
+        destroyed_row.0 = false;
+    }
+
+    if row_completed_function(&children_query, &mut commands, &parents_query) {
+        destroyed_row.0 = true;
+    }
+
+    if should_spawn && !destroyed_row.0 {
+        dbg!(should_spawn, destroyed_row.0);
         spawn_block_event.send(SpawnBlockEvent);
     }
+
 }
 
 fn spawn_block_system(mut read_event: EventReader<SpawnBlockEvent>, mut commands: Commands) {
