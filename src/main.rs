@@ -68,7 +68,7 @@ fn main() {
         .add_system(game_time_system)
         .add_system(spawn_block_system)
         .add_system(move_sideways_system)
-        // .add_system_to_stage(CoreStage::PostUpdate, row_completed_system)
+        .add_system(rotate_pieces_system)
         .add_event::<GameOverEvent>()
         .add_event::<MoveDownEvent>()
         .add_event::<SpawnBlockEvent>()
@@ -126,7 +126,7 @@ fn spawn_single_block_system(
 /// It also tests whether the game should end, case which it will send the message
 /// GameOverEvent
 fn should_move_block_system(
-    mut move_event: EventReader<MoveDownEvent>,
+    move_event: EventReader<MoveDownEvent>,
     mut spawn_block_event: EventWriter<SpawnBlockEvent>,
     mut parents_query: Query<(Entity, &Children, &mut BlockParent, &mut Transform), Without<NormalBlock>>,
     mut game_over_event: EventWriter<GameOverEvent>,
@@ -414,4 +414,36 @@ fn row_completed_function (
         }
     }
     return false;
+}
+
+// Formerly known as "rakuna_matata()"
+fn rotate_pieces_system (
+    parents_query: Query<(Entity, &BlockParent), Without<NormalBlock>>,
+    mut children_query: Query<(&Parent, &mut Transform), With<NormalBlock>>,
+    mut event: EventReader<RotatePieceEvent>,
+) {
+
+    for _ in event.iter() {
+        for (parent_entity, block_parent) in parents_query.iter() {
+            // We only care about the moving one
+            if !block_parent.moving {
+                continue;
+            }
+
+            // Get the children
+            for (child_parent, mut child_relative_transform) in children_query.iter_mut() {
+                // We only care about the moving one
+                if child_parent.get() != parent_entity {
+                    continue;
+                }
+
+                // Rotate the piece
+                // x = y and y = -x, if you don't understand you have a skill issue
+                let temp_x = child_relative_transform.translation.x;
+                child_relative_transform.translation.x = child_relative_transform.translation.y;
+                child_relative_transform.translation.y = -temp_x
+
+            }
+        }
+    }
 }
