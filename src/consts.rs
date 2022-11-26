@@ -1,10 +1,10 @@
 use bevy::{prelude::*, math::vec2};
 
-pub const DBG_MODE: bool = true;
+pub const DBG_MODE: bool = false;
 
 pub const BLOCK_SIZE: f32 = 20.;// The size of a block in pixels
 
-pub const LIMITS: Vec2 = vec2(5., 20.);
+pub const LIMITS: Vec2 = vec2(10., 20.);
 
 pub const GAME_SPEED: f32 = 1.; // Game speed in seconds
 

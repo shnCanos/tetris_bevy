@@ -223,7 +223,9 @@ fn should_move_block_system(
     }
 
     if should_spawn && !destroyed_row.0 {
-        dbg!(should_spawn, destroyed_row.0);
+        if DBG_MODE {
+            dbg!(should_spawn, destroyed_row.0);
+        }
         spawn_block_event.send(SpawnBlockEvent);
     }
 
@@ -402,7 +404,7 @@ fn row_completed_function (
 
     for row in rows.iter() {
         // Despawn row
-        if row.len() == LIMITS.x as usize * 2 - 1{
+        if row.len() >= LIMITS.x as usize * 2 - 1{
             for (centity, ctransform, cparent) in block_query.iter() {
                 if parent_query.get(cparent.get()).unwrap().2.moving {
                     continue;
