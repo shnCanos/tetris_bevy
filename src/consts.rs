@@ -26,3 +26,5 @@ pub const BLOCK_TYPES: [[Vec2; 5]; 5] = [
     [Vec2::ZERO, vec2(-1., 0.), vec2(-1., 1.), vec2(0., -1.), Vec2::ZERO],
     [Vec2::ZERO, vec2(1., 0.), vec2(1., -1.), vec2(0., -1.), Vec2::ZERO],
     ];
+
+pub const SCORE_INCREMENT: usize = 100;

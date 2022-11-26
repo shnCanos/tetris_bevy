@@ -69,6 +69,7 @@ fn main() {
         .add_system(spawn_block_system)
         .add_system(move_sideways_system)
         .add_system(rotate_pieces_system)
+        .add_system(game_over_system)
         .add_event::<GameOverEvent>()
         .add_event::<MoveDownEvent>()
         .add_event::<SpawnBlockEvent>()
@@ -133,6 +134,7 @@ fn should_move_block_system(
     children_query: Query<(Entity, &GlobalTransform, &Parent), (Without<BlockParent>, With<NormalBlock>)>,
     mut commands: Commands,
     mut destroyed_row: ResMut<DestroyedRow>,
+    mut score: ResMut<Score>
 ) {
     // -- BOTH OF THESE ONLY NEED TO BE SENT ONCE, THUS THE LACK OF A FOR LOOP --
 
@@ -152,7 +154,6 @@ fn should_move_block_system(
         let mut check_game_over = || {
             if parent_transform.translation == Vec3::ZERO {
                 game_over_event.send (GameOverEvent);
-                panic!("Game over!"); // Placeholder
             }
         };
 
@@ -217,7 +218,7 @@ fn should_move_block_system(
         destroyed_row.0 = false;
     }
 
-    if row_completed_function(&children_query, &mut commands, &parents_query) {
+    if row_completed_function(&children_query, &mut commands, &parents_query, &mut score.0) {
         destroyed_row.0 = true;
     }
 
@@ -369,7 +370,8 @@ fn move_sideways_system (
 fn row_completed_function (
     block_query: &Query<(Entity, &GlobalTransform, &Parent), (Without<BlockParent>, With<NormalBlock>)>,
     commands: &mut Commands,
-    parent_query: &Query<(Entity, &Children, &mut BlockParent, &mut Transform), Without<NormalBlock>>
+    parent_query: &Query<(Entity, &Children, &mut BlockParent, &mut Transform), Without<NormalBlock>>,
+    mut score: &mut usize,
 ) -> bool {
     let mut rows: Vec<Vec<Vec2>> = Vec::new();
     for (_, ctransform, cparent) in block_query.iter() {
@@ -410,6 +412,7 @@ fn row_completed_function (
                     commands.entity(centity).despawn();
                 }
             }
+            *score += SCORE_INCREMENT;
             return true;
         }
     }
@@ -445,5 +448,17 @@ fn rotate_pieces_system (
 
             }
         }
+    }
+}
+
+use bevy::app::AppExit;
+fn game_over_system (
+    mut exit: EventWriter<AppExit>,
+    mut game_over: EventReader<GameOverEvent>,
+    score: Res<Score>
+) {
+    for _ in game_over.iter() {
+        println!("You lost! Your score was: {}", score.0);
+        exit.send(AppExit);
     }
 }
