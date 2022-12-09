@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use itertools::{izip, Itertools};
+use itertools::Itertools;
 use rand::{self, Rng};
 use std::time::Duration;
 
@@ -373,7 +373,7 @@ fn row_completed_function (
     block_query: &Query<(Entity, &GlobalTransform, &Parent), (Without<BlockParent>, With<NormalBlock>)>,
     commands: &mut Commands,
     parent_query: &Query<(Entity, &Children, &mut BlockParent, &mut Transform), Without<NormalBlock>>,
-    mut score: &mut usize,
+    score: &mut usize,
 ) -> bool {
     let mut rows: Vec<Vec<Vec2>> = Vec::new();
     for (_, ctransform, cparent) in block_query.iter() {
